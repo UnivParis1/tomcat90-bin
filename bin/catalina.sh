@@ -62,7 +62,7 @@
 #                   containing some jars in order to allow replacement of APIs
 #                   created outside of the JCP (i.e. DOM and SAX from W3C).
 #                   It can also be used to update the XML parser implementation.
-#                   Note that Java 9 no longer supports this feature.
+#                   This is only supported for Java <= 8.
 #                   Defaults to $CATALINA_HOME/endorsed.
 #
 #   JPDA_TRANSPORT  (Optional) JPDA transport used when the "jpda start"
@@ -98,6 +98,8 @@
 #   LOGGING_MANAGER (Optional) Override Tomcat's logging manager
 #                   Example (all one line)
 #                   LOGGING_MANAGER="-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager"
+#
+#   UMASK           (Optional) Override Tomcat's default UMASK of 0027
 #
 #   USE_NOHUP       (Optional) If set to the string true the start command will
 #                   use nohup so that the Tomcat process will ignore any hangup
@@ -226,7 +228,7 @@ fi
 
 # Bugzilla 37848: When no TTY is available, don't output to console
 have_tty=0
-if [ "`tty`" != "not a tty" ]; then
+if [ -t 0 ]; then
     have_tty=1
 fi
 
@@ -264,6 +266,12 @@ if [ -z "$LOGGING_MANAGER" ]; then
   LOGGING_MANAGER="-Djava.util.logging.manager=org.apache.juli.ClassLoaderLogManager"
 fi
 
+# Set UMASK unless it has been overridden
+if [ -z "$UMASK" ]; then
+    UMASK="0027"
+fi
+umask $UMASK
+
 # Java 9 no longer supports the java.endorsed.dirs
 # system property. Only try to use it if
 # JAVA_ENDORSED_DIRS was explicitly set
@@ -276,9 +284,8 @@ if [ -d "$CATALINA_HOME/endorsed" ]; then
     ENDORSED_PROP=java.endorsed.dirs
 fi
 
-# Uncomment the following line to make the umask available when using the
-# org.apache.catalina.security.SecurityListener
-#JAVA_OPTS="$JAVA_OPTS -Dorg.apache.catalina.security.SecurityListener.UMASK=`umask`"
+# Make the umask available when using the org.apache.catalina.security.SecurityListener
+JAVA_OPTS="$JAVA_OPTS -Dorg.apache.catalina.security.SecurityListener.UMASK=`umask`"
 
 if [ -z "$USE_NOHUP" ]; then
     if $hpux; then
@@ -289,7 +296,7 @@ if [ -z "$USE_NOHUP" ]; then
 fi
 unset _NOHUP
 if [ "$USE_NOHUP" = "true" ]; then
-    _NOHUP=nohup
+    _NOHUP="nohup"
 fi
 
 # Add the JAVA 9 specific start-up parameters required by Tomcat
@@ -507,7 +514,7 @@ elif [ "$1" = "stop" ] ; then
     fi
   fi
 
-  eval "\"$_RUNJAVA\"" $LOGGING_MANAGER $JAVA_OPTS \
+  eval "\"$_RUNJAVA\"" $JAVA_OPTS \
     -D$ENDORSED_PROP="\"$JAVA_ENDORSED_DIRS\"" \
     -classpath "\"$CLASSPATH\"" \
     -Dcatalina.base="\"$CATALINA_BASE\"" \
